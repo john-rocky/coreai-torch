@@ -6097,6 +6097,27 @@ async def test_split_with_sizes(
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize("use_empty", [False, True])
+@pytest.mark.parametrize("split_sizes", [[4, 0], [0, 4], [1, 0, 3]])
+async def test_split_with_sizes_zero_size_section(
+    split_sizes: list[int], use_empty: bool, dynamic: bool
+) -> None:
+    """A zero-size section converts and runs, whether or not anything reads it (#68)."""
+    x = torch.rand(8, 4)
+
+    class SplitZeroModel(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            parts = torch.split(x, split_sizes, dim=1)
+            if not use_empty:
+                parts = [p for p, size in zip(parts, split_sizes) if size]
+            return torch.cat(parts, dim=1) + 1.0
+
+    model = SplitZeroModel().eval()
+    dynamic_shapes = {"x": {0: torch.export.Dim("x0", min=1)}} if dynamic else None
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
     "num_embeddings,embedding_dim,indices_shape,dtype,indices_dtype",
     [

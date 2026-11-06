@@ -7117,6 +7117,28 @@ class TestSplitWithSizesIR:
             """,
         )
 
+    def test_zero_size_section(self) -> None:
+        # The zero-size section is not passed to coreai.split (#68).
+        class SplitZeroModel(nn.Module):
+            def forward(self, x: Tensor):
+                a, _, c = torch.split(x, [1, 0, 2], dim=1)
+                return a, c
+
+        ir = get_ir(SplitZeroModel().eval(), x=torch.rand(2, 3))
+        filecheck_pattern(
+            ir,
+            check_file="""
+                // CHECK-LABEL: module {
+                // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}) -> (tensor<2x1xf32> {coreai.name = "{{.*}}"}, tensor<2x2xf32> {coreai.name = "{{.*}}"}){{.*}} {
+                // CHECK-NEXT:     %[[SIZES:.*]] = coreai.constant dense<[1, 2]> : tensor<2xui32>
+                // CHECK-NEXT:     %[[DIM:.*]] = coreai.constant dense<1> : tensor<si32>
+                // CHECK-NEXT:     %[[R:[0-9a-z_]+]]{{(:2|, %[0-9a-z_]+)}} = coreai.split %[[X]], %[[SIZES]], %[[DIM]] : (tensor<2x3xf32>, tensor<2xui32>, tensor<si32>) -> (tensor<2x1xf32>, tensor<2x2xf32>)
+                // CHECK-NEXT:     coreai.output %[[R]]{{(#0)?}}, %[[R]]{{(#1|_1)}} : tensor<2x1xf32>, tensor<2x2xf32>
+                // CHECK-NEXT:   }
+                // CHECK-NEXT: }
+            """,
+        )
+
 
 class TestSqueezeDimsIR:
     def test_static(self) -> None:
