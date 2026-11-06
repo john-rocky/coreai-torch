@@ -2454,14 +2454,24 @@ def replace_reciprocal(
 def replace_remainder(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> Value:
-    # decomposition: x - floor_divide(x, y) * y
+    # PyTorch's formula (as in Inductor's remainder): r = fmod(x, y), plus y
+    # where r is non-zero and its sign differs from y's. The previous
+    # x - floor_divide(x, y) * y rounds the quotient, and with an fp16
+    # constant y it gave wrong values on the GPU (dynamic shapes) and the
+    # Neural Engine.
     x, y = _get_operands(values_map, node, [0, 1])
     promoted_type = get_promoted_type(x.type, y.type)
     x = coreai.cast(x, promoted_type)
     y = coreai.cast(y, promoted_type)
-    return coreai.broadcasting_sub(
-        x, coreai.broadcasting_mul(coreai.broadcasting_floor_divide(x, y), y)
+    r = coreai.broadcasting_modulo(x, y)
+    zero = coreai.constant(0, dtype=x.type.element_type)
+    needs_y = coreai.broadcasting_and(
+        coreai.broadcasting_not_equal(r, zero),
+        coreai.broadcasting_xor(
+            coreai.broadcasting_greater(zero, r), coreai.broadcasting_greater(zero, y)
+        ),
     )
+    return coreai.broadcasting_where(needs_y, coreai.broadcasting_add(r, y), r)
 
 
 def replace_repeat(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
