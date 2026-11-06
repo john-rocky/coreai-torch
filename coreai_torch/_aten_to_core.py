@@ -3782,6 +3782,7 @@ _aten_to_core_resolver: dict[str, Callable[..., Any]] = {
     "reflection_pad2d.default": replace_reflection_pad,
     "reflection_pad3d.default": replace_reflection_pad,
     "relu.default": replace_unary_ops,
+    "remainder.Scalar": replace_remainder,
     "remainder.Tensor": replace_remainder,
     "replication_pad1d.default": replace_replication_pad,
     "replication_pad2d.default": replace_replication_pad,
