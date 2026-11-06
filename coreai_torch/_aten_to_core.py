@@ -376,6 +376,15 @@ def replace_adaptive_avg_pool2d(
     x = _get_operand(values_map, node, 0)
     output_size = node.args[1]
 
+    # PyTorch also takes an unbatched [C, H, W] input (nn.AdaptiveAvgPool1d on
+    # [C, L] arrives as [C, 1, L]). Pool it as a batch of one.
+    if x.type.rank == 3:
+        batched = {**values_map, node.args[0].name: coreai.expand_dims(x, [0])}
+        pooled = replace_adaptive_avg_pool2d(batched, node, loc)
+        # The dynamic-shape path types its result [?, ?, ?, ?], so drop the
+        # batch dim with a reshape rather than shrink_dims.
+        return coreai.reshape(pooled, [-1, *output_size])
+
     if x.type.rank != 4:
         raise ValueError(
             f"adaptive_avg_pool2d requires 4D input (NCHW), got rank {x.type.rank}"
@@ -506,6 +515,12 @@ def replace_avg_pool3d(
         x.context, "avg_pool_3d", input_names, output_names, op_attributes
     )
 
+    # PyTorch also takes an unbatched [C, D, H, W] input. Pool it as a batch
+    # of one.
+    unbatched = x.type.rank == 4
+    if unbatched:
+        x = coreai.expand_dims(x, [0])
+
     dyn = RankedTensorType.get_dynamic_size()
     n = x.type.shape[0] if x.type.shape[0] > 0 else dyn
     c = x.type.shape[1] if x.type.shape[1] > 0 else dyn
@@ -587,9 +602,10 @@ def replace_avg_pool3d(
     count_include_pad = coreai.constant(count_include_pad)
     divisor_override = coreai.constant(divisor_override_val, dtype=np.int32)
 
-    return avg_pool3d_composite(
+    pooled = avg_pool3d_composite(
         x, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override
     )
+    return coreai.shrink_dims(pooled[0], [0]) if unbatched else pooled
 
 
 def _any_impl(x: Value, axes: list[int], keepdim: bool) -> Value:
@@ -2257,6 +2273,12 @@ def replace_maxpool2d_with_indices(
     dilation = args[4] if len(args) >= 5 else [1, 1]
     ceil_mode = args[5] if len(args) >= 6 else False
 
+    # PyTorch also takes an unbatched [C, H, W] input (nn.MaxPool1d on [C, L]
+    # arrives as [C, 1, L]). Pool it as a batch of one.
+    unbatched = x.type.rank == 3
+    if unbatched:
+        x = coreai.expand_dims(x, [0])
+
     # Perform padding manually — coreai.maxpool2d does not support padding
     x = coreai.pad(
         x,
@@ -2284,6 +2306,8 @@ def replace_maxpool2d_with_indices(
         dilation=np.array(dilation, np.uint32),
         ceil_mode=ceil_mode,
     )
+    if unbatched:
+        result = coreai.shrink_dims(result, [0])
 
     # coreai.maxpool2d does not return indices — return a dummy tensor matching
     # the output shape (same spatial dims as the pooled result), filled with zeros.
