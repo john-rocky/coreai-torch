@@ -2907,15 +2907,30 @@ def replace_unsqueeze(
 def replace_split_with_sizes(
     values_map: dict[str, Value], node: fx.Node, loc: Location
 ) -> list[Value]:
-    """Converts aten.split_with_sizes to coreai.split."""
+    """Converts aten.split_with_sizes to coreai.split.
+
+    Zero-size sections are left out of the split: on the GPU and the Neural
+    Engine, loading a split with an empty result aborts the process. Each one
+    becomes an empty slice of the input instead.
+    """
     x = _get_operand(values_map, node, 0)
+    rank = x.type.rank
     dim = node.args[2] if len(node.args) > 2 else 0
-    dim = dim + x.type.rank if dim < 0 else dim
-    split_sizes = np.array(node.args[1], dtype=np.uint32)
-    results = coreai.split(x, split_sizes, np.int32(dim))
-    if isinstance(results, OpResultList):
-        return list(results)
-    return [results]
+    dim = dim + rank if dim < 0 else dim
+    sizes = list(node.args[1])
+    nonzero = [size for size in sizes if size != 0]
+    pieces = []
+    if nonzero:
+        results = coreai.split(x, np.array(nonzero, dtype=np.uint32), np.int32(dim))
+        pieces = list(results) if isinstance(results, OpResultList) else [results]
+    empty_end = [0 if i == dim else INT32_MAX for i in range(rank)]
+    remaining = iter(pieces)
+    return [
+        next(remaining)
+        if size != 0
+        else coreai.slice_(x, [0] * rank, empty_end, [1] * rank)
+        for size in sizes
+    ]
 
 
 def replace_view(values_map: dict[str, Value], node: fx.Node, loc: Location) -> Value:
