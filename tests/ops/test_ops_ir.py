@@ -6605,9 +6605,15 @@ class TestRemainderIR:
             check_file="""
                 // CHECK-LABEL: module {
                 // CHECK-NEXT:   coreai.graph @main(%[[X:.*]]: tensor<2x3xf32> {coreai.name = "x"}, %[[Y:.*]]: tensor<2x3xf32> {coreai.name = "y"}) -> (tensor<2x3xf32> {coreai.name = "{{.*}}"}){{.*}} {
-                // CHECK-NEXT:     %[[FD:.*]] = coreai.decomposable.broadcasting_floor_divide %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
-                // CHECK-NEXT:     %[[MUL:.*]] = coreai.decomposable.broadcasting_mul %[[FD]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
-                // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_sub %[[X]], %[[MUL]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+                // CHECK-NEXT:     %[[ZERO:.*]] = coreai.constant dense<0.000000e+00> : tensor<f32>
+                // CHECK-NEXT:     %[[MOD:.*]] = coreai.decomposable.broadcasting_modulo %[[X]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+                // CHECK-NEXT:     %[[NZ:.*]] = coreai.decomposable.broadcasting_not_equal %[[MOD]], %[[ZERO]] : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xi1>
+                // CHECK-NEXT:     %[[MODNEG:.*]] = coreai.decomposable.broadcasting_greater %[[ZERO]], %[[MOD]] : (tensor<f32>, tensor<2x3xf32>) -> tensor<2x3xi1>
+                // CHECK-NEXT:     %[[YNEG:.*]] = coreai.decomposable.broadcasting_greater %[[ZERO]], %[[Y]] : (tensor<f32>, tensor<2x3xf32>) -> tensor<2x3xi1>
+                // CHECK-NEXT:     %[[SIGNS:.*]] = coreai.decomposable.broadcasting_xor %[[MODNEG]], %[[YNEG]] : (tensor<2x3xi1>, tensor<2x3xi1>) -> tensor<2x3xi1>
+                // CHECK-NEXT:     %[[FIX:.*]] = coreai.decomposable.broadcasting_and %[[NZ]], %[[SIGNS]] : (tensor<2x3xi1>, tensor<2x3xi1>) -> tensor<2x3xi1>
+                // CHECK-NEXT:     %[[ADD:.*]] = coreai.decomposable.broadcasting_add %[[MOD]], %[[Y]] : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+                // CHECK-NEXT:     %[[R:.*]] = coreai.decomposable.broadcasting_where %[[FIX]], %[[ADD]], %[[MOD]] : (tensor<2x3xi1>, tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
                 // CHECK-NEXT:     coreai.output %[[R]] : tensor<2x3xf32>
                 // CHECK-NEXT:   }
                 // CHECK-NEXT: }

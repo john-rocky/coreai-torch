@@ -3616,6 +3616,44 @@ async def test_relu(x: Tensor, dynamic: bool) -> None:
 
 
 @pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize(
+    "x,divisor",
+    [
+        (torch.linspace(-7.5, 7.5, 12).reshape(3, 4).half(), torch.tensor(3.0)),
+        (
+            torch.tensor(
+                [
+                    [-7.5, -6.0, -4.75, -3.0],
+                    [-1.25, -0.0, 0.0, 0.5],
+                    [1.25, 3.0, 4.75, 7.5],
+                ]
+            ).half(),
+            torch.tensor(-2.5),
+        ),
+        (torch.linspace(-7.5, 7.5, 12).reshape(3, 4), torch.tensor(-3.0)),
+        (torch.linspace(-7.5, 7.5, 12).reshape(3, 4), torch.tensor(0.1)),
+        (torch.arange(-8, 8, dtype=torch.int32).reshape(4, 4), torch.tensor(-3)),
+    ],
+)
+async def test_remainder_constant_divisor(
+    x: Tensor, divisor: Tensor, dynamic: bool
+) -> None:
+    """torch.remainder by a constant (a buffer), positive and negative."""
+
+    class RemainderConstantModel(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.register_buffer("divisor", divisor.to(x.dtype))
+
+        def forward(self, x: Tensor) -> Tensor:
+            return torch.remainder(x, self.divisor)
+
+    model = RemainderConstantModel().eval()
+    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize("x", [torch.rand(2, 2)])
 @pytest.mark.parametrize("y", [torch.rand(2, 2)])
 async def test_remainder(x: Tensor, y: Tensor, dynamic: bool) -> None:
