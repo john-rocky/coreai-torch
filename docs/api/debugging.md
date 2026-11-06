@@ -106,11 +106,13 @@ Capture intermediate values from deployed Core AI models:
 
 ```python
 from coreai_torch.debugging.inspector import CoreAIInspector
-from coreai.runtime import AIModel
+from coreai.runtime import AIModel, SpecializationOptions
 
-# Load deployed Core AI model
+# Load deployed Core AI model with debug enabled; without it no values are captured
 asset_path = Path("my_model.aimodel")
-ai_model = await AIModel.load(asset_path)
+ai_model = await AIModel.load(
+    asset_path, SpecializationOptions.default().with_debug(enabled=True)
+)
 
 # Create inspector
 inspector = CoreAIInspector(model=ai_model, function_name="main")
