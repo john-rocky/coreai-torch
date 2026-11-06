@@ -3639,6 +3639,28 @@ async def test_remainder(x: Tensor, y: Tensor, dynamic: bool) -> None:
 
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
+    "x,scalar",
+    [
+        (torch.linspace(-7.5, 7.5, 12).reshape(3, 4), 3),
+        (torch.linspace(-7.5, 7.5, 12).reshape(3, 4), -2.5),
+        (torch.arange(-8, 8, dtype=torch.int32).reshape(4, 4), 3),
+        (torch.arange(-8, 8, dtype=torch.int64).reshape(4, 4), -3),
+    ],
+)
+async def test_remainder_scalar(x: Tensor, scalar: int | float, dynamic: bool) -> None:
+    """x % scalar exports as aten.remainder.Scalar (#66)."""
+
+    class RemainderScalarModel(nn.Module):
+        def forward(self, x: Tensor) -> Tensor:
+            return x % scalar
+
+    model = RemainderScalarModel().eval()
+    dynamic_shapes = {"x": _all_dims_dynamic(x)} if dynamic else None
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize(
     "x,repeats",
     [
         # Basic 2D tensor repeats
