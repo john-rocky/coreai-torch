@@ -568,6 +568,46 @@ async def test_adaptive_avg_pool2d(
 
 @pytest.mark.parametrize("dynamic", [False, True])
 @pytest.mark.parametrize(
+    "pool,input_shape",
+    [
+        # [C, D, H, W]
+        (nn.AvgPool3d(2), (2, 4, 4, 4)),
+        (nn.AvgPool3d(3, stride=2, padding=1), (2, 5, 5, 5)),
+        # [C, L]: nn.MaxPool1d and nn.AdaptiveAvgPool1d reach the 2d ops as [C, 1, L]
+        (nn.MaxPool1d(2), (4, 8)),
+        (nn.MaxPool1d(3, stride=2, padding=1), (4, 8)),
+        (nn.AdaptiveAvgPool1d(4), (4, 8)),
+        (nn.AdaptiveAvgPool1d(3), (4, 8)),
+        # [C, H, W]
+        (nn.MaxPool2d(2), (3, 8, 8)),
+        (nn.MaxPool2d(3, stride=2, padding=1), (3, 8, 8)),
+        (nn.AdaptiveAvgPool2d(4), (3, 8, 8)),
+        (nn.AdaptiveAvgPool2d((3, 5)), (3, 13, 19)),
+    ],
+)
+async def test_pool_unbatched(
+    pool: nn.Module, input_shape: tuple[int, ...], dynamic: bool
+) -> None:
+    """Pooling on an input without a batch dim, which PyTorch accepts."""
+    x = torch.rand(*input_shape)
+
+    class UnbatchedPoolModel(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.pool = pool
+
+        def forward(self, x: Tensor) -> Tensor:
+            return self.pool(x)
+
+    model = UnbatchedPoolModel().eval()
+    dynamic_shapes = (
+        {"x": {0: torch.export.Dim("channels", min=1)}} if dynamic else None
+    )
+    await validate_numerical_output(model=model, x=x, dynamic_shapes=dynamic_shapes)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize(
     "shape,dim,keepdim,dtype",
     [
         # Global argmax (dim=None) - returns scalar index of max in flattened tensor
